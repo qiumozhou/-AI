@@ -16,6 +16,12 @@ import subprocess
 import urllib.request
 import zipfile
 
+# Windows平台的subprocess标志
+if sys.platform == 'win32':
+    CREATE_NO_WINDOW = 0x08000000
+else:
+    CREATE_NO_WINDOW = 0
+
 
 class ChineseChessAssistant:
     def __init__(self):
@@ -31,8 +37,16 @@ class ChineseChessAssistant:
         """设置Pikafish引擎"""
         print("正在设置Pikafish引擎...")
         
+        # 获取程序运行目录（支持打包后的exe）
+        if getattr(sys, 'frozen', False):
+            # 如果是打包后的exe
+            base_path = Path(sys.executable).parent
+        else:
+            # 如果是Python脚本
+            base_path = Path(__file__).parent
+        
         # 检查引擎是否存在
-        engine_dir = Path("engine")
+        engine_dir = base_path / "engine"
         engine_dir.mkdir(exist_ok=True)
         
         # Windows平台
@@ -40,7 +54,7 @@ class ChineseChessAssistant:
             engine_file = engine_dir / "pikafish.exe"
             if not engine_file.exists():
                 print("未找到引擎文件，请手动下载Pikafish引擎")
-                print("下载地址: https://github.com/pikafish-Pikafish/Pikafish/releases")
+                print("下载地址: https://github.com/official-pikafish/Pikafish/releases")
                 print(f"请将pikafish.exe放置在 {engine_dir.absolute()} 目录下")
                 self.engine_path = None
             else:
@@ -103,14 +117,28 @@ class ChineseChessAssistant:
             return "引擎未就绪，请先下载Pikafish引擎"
         
         try:
-            # 启动引擎进程
+            # 启动引擎进程 - 使用更兼容的方式
+            startupinfo = None
+            creationflags = 0
+            
+            if sys.platform == 'win32':
+                # Windows下隐藏控制台窗口
+                startupinfo = subprocess.STARTUPINFO()
+                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                startupinfo.wShowWindow = subprocess.SW_HIDE
+                creationflags = CREATE_NO_WINDOW
+            
             process = subprocess.Popen(
                 [self.engine_path],
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
-                bufsize=1
+                encoding='utf-8',
+                errors='ignore',  # 忽略编码错误
+                bufsize=1,
+                startupinfo=startupinfo,
+                creationflags=creationflags
             )
             
             # 发送UCI命令
@@ -123,25 +151,44 @@ class ChineseChessAssistant:
             ]
             
             for cmd in commands:
-                process.stdin.write(cmd)
-                process.stdin.flush()
+                try:
+                    process.stdin.write(cmd)
+                    process.stdin.flush()
+                except (OSError, BrokenPipeError):
+                    break
             
             # 读取引擎输出
             best_move = None
-            for line in process.stdout:
-                print(f"引擎输出: {line.strip()}")
-                if line.startswith("bestmove"):
-                    best_move = line.split()[1]
-                    break
+            timeout_counter = 0
+            max_timeout = 100  # 最多读取100行
+            
+            try:
+                for line in process.stdout:
+                    timeout_counter += 1
+                    if timeout_counter > max_timeout:
+                        break
+                    
+                    line = line.strip()
+                    if line:
+                        print(f"引擎输出: {line}")
+                        if line.startswith("bestmove"):
+                            best_move = line.split()[1]
+                            break
+            except:
+                pass
             
             # 关闭引擎
-            process.stdin.write("quit\n")
-            process.stdin.flush()
-            process.wait(timeout=5)
+            try:
+                process.stdin.write("quit\n")
+                process.stdin.flush()
+                process.wait(timeout=2)
+            except:
+                process.kill()
             
             return best_move if best_move else "未找到最佳走法"
             
         except Exception as e:
+            print(f"引擎分析异常: {str(e)}")
             return f"引擎分析出错: {str(e)}"
     
     def format_move(self, move_uci):
