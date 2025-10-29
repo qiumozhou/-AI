@@ -30,11 +30,12 @@ class ChineseChessAssistant:
         self.engine_path = None
         self.current_fen = None
         self.yolo_detector = None
+        self.ocr_detector = None
         
         # 初始化引擎
         self.setup_engine()
         
-        # 尝试加载YOLO检测器（如果可用）
+        # 尝试加载检测器（OCR优先，然后YOLO）
         self.setup_yolo_detector()
         
     def setup_engine(self):
@@ -70,6 +71,18 @@ class ChineseChessAssistant:
     def setup_yolo_detector(self):
         """设置YOLO检测器（如果可用）"""
         try:
+            # 优先尝试OCR识别（推荐）
+            try:
+                from universal_chess_detector import UniversalChessDetector
+                self.ocr_detector = UniversalChessDetector()
+                if self.ocr_detector.ocr:
+                    print("✓ OCR检测器已加载，将使用OCR识别棋子")
+                    return
+            except Exception as e:
+                print(f"OCR检测器加载失败: {e}")
+                self.ocr_detector = None
+            
+            # 其次尝试YOLO
             from yolo_chess_detector import YOLOChessDetector, YOLO_AVAILABLE
             
             if YOLO_AVAILABLE:
@@ -78,13 +91,15 @@ class ChineseChessAssistant:
                     self.yolo_detector = YOLOChessDetector(str(model_path))
                     print("✓ YOLO检测器已加载，将使用深度学习识别")
                 else:
-                    print("ℹ YOLO模型未找到，使用传统颜色识别")
+                    print("ℹ YOLO模型未找到")
+                    print("ℹ 使用传统颜色识别")
                     print(f"  如需深度学习识别，请将模型放置在: {model_path}")
             else:
-                print("ℹ YOLOv8未安装，使用传统颜色识别")
-                print("  如需安装: pip install ultralytics")
+                print("ℹ 未安装高级识别模块")
+                print("  推荐安装OCR: pip install paddleocr")
+                print("  或安装YOLO: pip install ultralytics")
         except Exception as e:
-            print(f"YOLO检测器初始化失败: {e}")
+            print(f"检测器初始化失败: {e}")
             self.yolo_detector = None
             
     def capture_screen(self, region=None):
@@ -133,11 +148,21 @@ class ChineseChessAssistant:
             # 保存调试图像
             cv2.imwrite("debug_board_original.png", board_image)
             
-            # 优先使用YOLO检测器（如果可用）
+            # 优先使用OCR检测器（推荐）
+            if hasattr(self, 'ocr_detector') and self.ocr_detector and self.ocr_detector.ocr:
+                print("使用OCR识别棋子汉字...")
+                fen = self.ocr_detector.recognize_from_image(board_image)
+                if fen and 'k' in fen.lower() and 'K' in fen:
+                    print("✓ OCR识别成功")
+                    return fen
+                print("OCR识别结果不完整，尝试其他方法...")
+            
+            # 其次使用YOLO检测器（如果可用）
             if self.yolo_detector and self.yolo_detector.model:
                 print("使用YOLO深度学习识别...")
                 fen = self.yolo_detector.recognize_from_image(board_image)
-                if fen:
+                if fen and 'k' in fen.lower() and 'K' in fen:
+                    print("✓ YOLO识别成功")
                     return fen
                 print("YOLO识别失败，回退到传统方法")
             
