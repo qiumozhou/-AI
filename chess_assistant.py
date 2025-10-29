@@ -29,9 +29,13 @@ class ChineseChessAssistant:
         self.screenshot_interval = 2  # 截图间隔（秒）
         self.engine_path = None
         self.current_fen = None
+        self.yolo_detector = None
         
         # 初始化引擎
         self.setup_engine()
+        
+        # 尝试加载YOLO检测器（如果可用）
+        self.setup_yolo_detector()
         
     def setup_engine(self):
         """设置Pikafish引擎"""
@@ -62,6 +66,26 @@ class ChineseChessAssistant:
                 print(f"引擎路径: {self.engine_path}")
         else:
             print("当前仅支持Windows平台")
+    
+    def setup_yolo_detector(self):
+        """设置YOLO检测器（如果可用）"""
+        try:
+            from yolo_chess_detector import YOLOChessDetector, YOLO_AVAILABLE
+            
+            if YOLO_AVAILABLE:
+                model_path = Path("models/chess_yolo.pt")
+                if model_path.exists():
+                    self.yolo_detector = YOLOChessDetector(str(model_path))
+                    print("✓ YOLO检测器已加载，将使用深度学习识别")
+                else:
+                    print("ℹ YOLO模型未找到，使用传统颜色识别")
+                    print(f"  如需深度学习识别，请将模型放置在: {model_path}")
+            else:
+                print("ℹ YOLOv8未安装，使用传统颜色识别")
+                print("  如需安装: pip install ultralytics")
+        except Exception as e:
+            print(f"YOLO检测器初始化失败: {e}")
+            self.yolo_detector = None
             
     def capture_screen(self, region=None):
         """
@@ -109,7 +133,16 @@ class ChineseChessAssistant:
             # 保存调试图像
             cv2.imwrite("debug_board_original.png", board_image)
             
-            # 分析棋盘并识别棋子
+            # 优先使用YOLO检测器（如果可用）
+            if self.yolo_detector and self.yolo_detector.model:
+                print("使用YOLO深度学习识别...")
+                fen = self.yolo_detector.recognize_from_image(board_image)
+                if fen:
+                    return fen
+                print("YOLO识别失败，回退到传统方法")
+            
+            # 使用传统颜色识别方法
+            print("使用传统颜色识别方法...")
             fen = self._analyze_board_image(board_image)
             return fen
             
@@ -340,6 +373,15 @@ class ChineseChessAssistant:
         if not self.engine_path or not os.path.exists(self.engine_path):
             return "引擎未就绪，请先下载Pikafish引擎"
         
+        # 简单验证FEN格式
+        if not fen or len(fen) < 10:
+            return "FEN格式无效"
+        
+        # 检查是否有足够的棋子（至少要有将/帅）
+        if 'k' not in fen.lower() or 'K' not in fen:
+            print("警告: FEN中缺少将帅，可能识别不准确")
+            # 仍然尝试分析
+        
         process = None
         try:
             # 启动引擎进程 - 使用更兼容的方式
@@ -383,7 +425,8 @@ class ChineseChessAssistant:
                 try:
                     if process.poll() is not None:
                         # 进程已结束
-                        return "引擎进程意外终止"
+                        print(f"引擎进程在发送命令'{cmd.strip()}'时终止")
+                        return "引擎拒绝了该局面（FEN可能无效）"
                     process.stdin.write(cmd)
                     process.stdin.flush()
                     time.sleep(0.05)  # 短暂延迟
