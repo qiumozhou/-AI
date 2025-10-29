@@ -52,11 +52,19 @@ class UniversalChessDetector:
         if OCR_AVAILABLE:
             try:
                 # 初始化PaddleOCR（中文）
-                self.ocr = PaddleOCR(
-                    use_angle_cls=True,
-                    lang='ch',
-                    show_log=False
-                )
+                # 注意：不同版本的参数可能不同
+                try:
+                    self.ocr = PaddleOCR(
+                        use_angle_cls=True,
+                        lang='ch',
+                        show_log=False
+                    )
+                except TypeError:
+                    # 旧版本不支持show_log参数
+                    self.ocr = PaddleOCR(
+                        use_angle_cls=True,
+                        lang='ch'
+                    )
                 print("✓ OCR初始化成功")
             except Exception as e:
                 print(f"OCR初始化失败: {e}")
