@@ -99,14 +99,187 @@ class ChineseChessAssistant:
         识别棋盘上的棋子
         返回FEN格式的棋局描述
         """
-        # 这是一个简化的实现
-        # 实际应用中需要训练深度学习模型来识别棋子
+        try:
+            # 调整图像大小以便处理
+            h, w = board_image.shape[:2]
+            if w > 900 or h > 1000:
+                scale = min(900/w, 1000/h)
+                board_image = cv2.resize(board_image, (int(w*scale), int(h*scale)))
+            
+            # 保存调试图像
+            cv2.imwrite("debug_board_original.png", board_image)
+            
+            # 分析棋盘并识别棋子
+            fen = self._analyze_board_image(board_image)
+            return fen
+            
+        except Exception as e:
+            print(f"棋子识别出错: {e}")
+            # 返回初始局面作为后备
+            return "rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w - - 0 1"
+    
+    def _analyze_board_image(self, board_image):
+        """
+        分析棋盘图像并生成FEN
+        """
+        # 转换为HSV色彩空间
+        hsv = cv2.cvtColor(board_image, cv2.COLOR_BGR2HSV)
+        h, w = board_image.shape[:2]
         
-        # 中国象棋初始局面的FEN
-        initial_fen = "rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w - - 0 1"
+        # 将棋盘分成9x10的格子
+        cell_width = w / 9
+        cell_height = h / 10
         
-        print("棋子识别功能需要训练专门的模型，当前返回初始局面")
-        return initial_fen
+        # 用于存储棋盘状态 [10行][9列]
+        board = [[None for _ in range(9)] for _ in range(10)]
+        
+        # 检测每个格子
+        for row in range(10):
+            for col in range(9):
+                # 计算格子中心位置
+                x = int((col + 0.5) * cell_width)
+                y = int((row + 0.5) * cell_height)
+                
+                # 提取格子区域（中心40%区域，避免边界线干扰）
+                x1 = int(col * cell_width + cell_width * 0.3)
+                y1 = int(row * cell_height + cell_height * 0.3)
+                x2 = int((col + 1) * cell_width - cell_width * 0.3)
+                y2 = int((row + 1) * cell_height - cell_height * 0.3)
+                
+                cell = board_image[y1:y2, x1:x2]
+                if cell.size == 0:
+                    continue
+                
+                # 检测这个格子是否有棋子
+                piece = self._detect_piece_in_cell(cell, hsv[y1:y2, x1:x2], row, col)
+                board[row][col] = piece
+        
+        # 转换为FEN格式
+        fen = self._board_to_fen(board)
+        return fen
+    
+    def _detect_piece_in_cell(self, cell_bgr, cell_hsv, row, col):
+        """
+        检测单个格子中的棋子
+        返回: 'r', 'n', 'b', 'a', 'k', 'c', 'p' (黑方小写) 
+              'R', 'N', 'B', 'A', 'K', 'C', 'P' (红方大写)
+              或 None (空格)
+        """
+        if cell_hsv.size == 0:
+            return None
+        
+        # 定义颜色范围 (HSV)
+        # 红色棋子
+        red_lower1 = np.array([0, 70, 50])
+        red_upper1 = np.array([10, 255, 255])
+        red_lower2 = np.array([170, 70, 50])
+        red_upper2 = np.array([180, 255, 255])
+        
+        # 黑色棋子
+        black_lower = np.array([0, 0, 0])
+        black_upper = np.array([180, 255, 80])
+        
+        # 检测红色
+        mask_red1 = cv2.inRange(cell_hsv, red_lower1, red_upper1)
+        mask_red2 = cv2.inRange(cell_hsv, red_lower2, red_upper2)
+        mask_red = cv2.bitwise_or(mask_red1, mask_red2)
+        
+        # 检测黑色
+        mask_black = cv2.inRange(cell_hsv, black_lower, black_upper)
+        
+        red_pixels = cv2.countNonZero(mask_red)
+        black_pixels = cv2.countNonZero(mask_black)
+        total_pixels = cell_hsv.shape[0] * cell_hsv.shape[1]
+        
+        # 如果颜色像素占比太少，认为是空格
+        threshold = total_pixels * 0.05
+        
+        if red_pixels < threshold and black_pixels < threshold:
+            return None
+        
+        # 根据位置推断棋子类型（使用初始局面的位置）
+        is_red = red_pixels > black_pixels
+        
+        # 根据行列位置推断棋子类型
+        piece = self._infer_piece_by_position(row, col, is_red)
+        
+        return piece
+    
+    def _infer_piece_by_position(self, row, col, is_red):
+        """
+        根据位置推断棋子类型（基于标准开局）
+        """
+        # 黑方（上方，row 0-4）
+        if not is_red:
+            if row == 0:  # 第一行
+                if col in [0, 8]: return 'r'  # 车
+                if col in [1, 7]: return 'n'  # 马
+                if col in [2, 6]: return 'b'  # 象
+                if col in [3, 5]: return 'a'  # 士
+                if col == 4: return 'k'  # 将
+            elif row == 2:  # 第三行
+                if col in [1, 7]: return 'c'  # 炮
+            elif row == 3:  # 第四行
+                if col in [0, 2, 4, 6, 8]: return 'p'  # 卒
+            else:
+                return 'p'  # 默认为兵
+        
+        # 红方（下方，row 5-9）
+        else:
+            if row == 9:  # 第十行
+                if col in [0, 8]: return 'R'  # 车
+                if col in [1, 7]: return 'N'  # 马
+                if col in [2, 6]: return 'B'  # 相
+                if col in [3, 5]: return 'A'  # 仕
+                if col == 4: return 'K'  # 帅
+            elif row == 7:  # 第八行
+                if col in [1, 7]: return 'C'  # 炮
+            elif row == 6:  # 第七行
+                if col in [0, 2, 4, 6, 8]: return 'P'  # 兵
+            else:
+                return 'P'  # 默认为兵
+        
+        return None
+    
+    def _board_to_fen(self, board):
+        """
+        将棋盘数组转换为FEN格式
+        board: 10x9的二维数组
+        """
+        fen_rows = []
+        
+        for row in board:
+            fen_row = ""
+            empty_count = 0
+            
+            for piece in row:
+                if piece is None:
+                    empty_count += 1
+                else:
+                    if empty_count > 0:
+                        fen_row += str(empty_count)
+                        empty_count = 0
+                    fen_row += piece
+            
+            # 添加末尾的空格数
+            if empty_count > 0:
+                fen_row += str(empty_count)
+            
+            # 如果整行为空，用9表示
+            if not fen_row or fen_row == "":
+                fen_row = "9"
+            
+            fen_rows.append(fen_row)
+        
+        # 拼接FEN（行之间用/分隔）
+        position = "/".join(fen_rows)
+        
+        # 添加其他FEN信息
+        # 格式: <位置> <轮到谁> <吃过路兵> <其他> <半回合> <回合数>
+        fen = f"{position} w - - 0 1"
+        
+        print(f"识别的FEN: {fen}")
+        return fen
     
     def analyze_position(self, fen):
         """

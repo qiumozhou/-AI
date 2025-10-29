@@ -90,7 +90,7 @@ class ChessAssistantGUI:
         depth_frame.pack(fill=tk.X, pady=5)
         
         ttk.Label(depth_frame, text="分析深度:").pack(side=tk.LEFT)
-        self.depth_var = tk.IntVar(value=15)
+        self.depth_var = tk.IntVar(value=10)
         depth_spinbox = ttk.Spinbox(
             depth_frame,
             from_=5,
@@ -100,6 +100,27 @@ class ChessAssistantGUI:
         )
         depth_spinbox.pack(side=tk.LEFT, padx=5)
         ttk.Label(depth_frame, text="(越大越准确但越慢)").pack(side=tk.LEFT)
+        
+        # FEN输入区域
+        fen_frame = ttk.LabelFrame(self.root, text="手动输入局面 (FEN格式)", padding="10")
+        fen_frame.pack(fill=tk.X, padx=10, pady=5)
+        
+        fen_input_frame = ttk.Frame(fen_frame)
+        fen_input_frame.pack(fill=tk.X)
+        
+        self.fen_entry = ttk.Entry(fen_input_frame, width=60)
+        self.fen_entry.pack(side=tk.LEFT, padx=5, expand=True, fill=tk.X)
+        self.fen_entry.insert(0, "rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w - - 0 1")
+        
+        analyze_fen_btn = ttk.Button(
+            fen_input_frame,
+            text="分析此局面",
+            command=self.analyze_fen_input
+        )
+        analyze_fen_btn.pack(side=tk.LEFT, padx=5)
+        
+        ttk.Label(fen_frame, text="提示: 可以从象棋软件复制FEN格式棋局，粘贴到上方输入框进行分析", 
+                 foreground="gray").pack()
         
         # 主内容区域 - 使用PanedWindow分割
         main_paned = ttk.PanedWindow(self.root, orient=tk.HORIZONTAL)
@@ -329,6 +350,37 @@ class ChessAssistantGUI:
         self.log_text.config(state=tk.NORMAL)
         self.log_text.delete("1.0", tk.END)
         self.log_text.config(state=tk.DISABLED)
+    
+    def analyze_fen_input(self):
+        """
+        分析用户输入的FEN局面
+        """
+        fen = self.fen_entry.get().strip()
+        if not fen:
+            self.log("请输入FEN格式的棋局", "warning")
+            return
+        
+        self.log(f"分析FEN: {fen[:50]}...", "info")
+        
+        if not self.assistant.engine_path:
+            self.log("引擎未配置，无法分析", "error")
+            return
+        
+        try:
+            # 在新线程中分析，避免阻塞GUI
+            def analyze_thread():
+                self.log("引擎分析中，请稍候...", "info")
+                best_move = self.assistant.analyze_position(fen)
+                formatted_move = self.assistant.format_move(best_move)
+                
+                self.root.after(0, lambda: self.log(f"最佳走法: {formatted_move}", "success"))
+                self.root.after(0, lambda: self.update_suggestion(formatted_move))
+            
+            import threading
+            threading.Thread(target=analyze_thread, daemon=True).start()
+            
+        except Exception as e:
+            self.log(f"分析失败: {str(e)}", "error")
 
 
 def main():
