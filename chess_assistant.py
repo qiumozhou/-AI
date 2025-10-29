@@ -116,6 +116,7 @@ class ChineseChessAssistant:
         if not self.engine_path or not os.path.exists(self.engine_path):
             return "引擎未就绪，请先下载Pikafish引擎"
         
+        process = None
         try:
             # 启动引擎进程 - 使用更兼容的方式
             startupinfo = None
@@ -132,64 +133,98 @@ class ChineseChessAssistant:
                 [self.engine_path],
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                stderr=subprocess.STDOUT,  # 合并stderr到stdout
                 text=True,
                 encoding='utf-8',
                 errors='ignore',  # 忽略编码错误
-                bufsize=1,
+                bufsize=0,  # 无缓冲
                 startupinfo=startupinfo,
                 creationflags=creationflags
             )
             
+            # 等待进程启动
+            time.sleep(0.1)
+            
             # 发送UCI命令
             commands = [
                 "uci\n",
+                "isready\n",
                 "setoption name Hash value 256\n",
                 "ucinewgame\n",
                 f"position fen {fen}\n",
-                "go depth 15\n"  # 分析深度15
+                "go depth 10\n"  # 降低深度提高响应速度
             ]
             
             for cmd in commands:
                 try:
+                    if process.poll() is not None:
+                        # 进程已结束
+                        return "引擎进程意外终止"
                     process.stdin.write(cmd)
                     process.stdin.flush()
-                except (OSError, BrokenPipeError):
-                    break
+                    time.sleep(0.05)  # 短暂延迟
+                except Exception as e:
+                    print(f"发送命令失败: {cmd.strip()} - {e}")
+                    return "引擎通信失败"
             
             # 读取引擎输出
             best_move = None
             timeout_counter = 0
-            max_timeout = 100  # 最多读取100行
+            max_timeout = 200  # 增加超时计数
             
-            try:
-                for line in process.stdout:
-                    timeout_counter += 1
-                    if timeout_counter > max_timeout:
+            while timeout_counter < max_timeout:
+                try:
+                    if process.poll() is not None:
+                        # 进程已结束
                         break
+                    
+                    line = process.stdout.readline()
+                    if not line:
+                        timeout_counter += 1
+                        time.sleep(0.01)
+                        continue
                     
                     line = line.strip()
                     if line:
-                        print(f"引擎输出: {line}")
+                        # 不打印所有输出，减少干扰
+                        # print(f"引擎: {line[:50]}...")
                         if line.startswith("bestmove"):
-                            best_move = line.split()[1]
+                            parts = line.split()
+                            if len(parts) >= 2:
+                                best_move = parts[1]
                             break
-            except:
-                pass
-            
-            # 关闭引擎
-            try:
-                process.stdin.write("quit\n")
-                process.stdin.flush()
-                process.wait(timeout=2)
-            except:
-                process.kill()
+                    
+                    timeout_counter += 1
+                except Exception as e:
+                    print(f"读取输出异常: {e}")
+                    break
             
             return best_move if best_move else "未找到最佳走法"
             
         except Exception as e:
-            print(f"引擎分析异常: {str(e)}")
-            return f"引擎分析出错: {str(e)}"
+            print(f"引擎分析异常: {type(e).__name__}: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return f"引擎错误: {str(e)}"
+        finally:
+            # 确保进程被正确关闭
+            if process:
+                try:
+                    if process.poll() is None:
+                        process.stdin.write("quit\n")
+                        process.stdin.flush()
+                        process.wait(timeout=1)
+                except:
+                    pass
+                finally:
+                    try:
+                        if process.poll() is None:
+                            process.terminate()
+                            time.sleep(0.1)
+                            if process.poll() is None:
+                                process.kill()
+                    except:
+                        pass
     
     def format_move(self, move_uci):
         """
