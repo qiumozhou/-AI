@@ -14,7 +14,7 @@ if sys.platform == "win32":
 # 导入识别器
 try:
     from universal_chess_detector import UniversalChessDetector
-    detector = UniversalChessDetector()
+    detector = UniversalChessDetector(debug=False)  # 关闭调试模式以加快速度
     print("[OK] OCR检测器加载成功")
 except Exception as e:
     print(f"[FAIL] OCR检测器加载失败: {e}")
