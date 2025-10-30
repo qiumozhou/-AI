@@ -14,7 +14,6 @@ import threading
 import time
 from pathlib import Path
 import cv2
-import numpy as np
 from PIL import Image, ImageTk
 import pyautogui
 
@@ -269,46 +268,24 @@ class ChessGUI:
     
     def start_auto_capture(self):
         """开始自动截图"""
-        try:
-            self.log_message("正在检查自动截图条件...")
-            
-            if not self.recognizer:
-                self.log_message("✗ 深度学习识别器未就绪")
-                messagebox.showerror("错误", "深度学习识别器未就绪，无法开始自动截图")
-                return
-            
-            self.log_message("✓ 识别器检查通过")
-            
-            # 测试截图功能
-            self.log_message("正在测试截图功能...")
-            try:
-                test_screenshot = pyautogui.screenshot()
-                self.log_message(f"✓ 截图测试成功，尺寸: {test_screenshot.size}")
-            except Exception as e:
-                self.log_message(f"✗ 截图测试失败: {e}")
-                messagebox.showerror("错误", f"截图功能测试失败: {e}")
-                return
-            
-            self.auto_capture_running = True
-            self.auto_capture_btn.config(text="停止自动截图")
-            
-            # 禁用相关控件
-            self.recognize_btn.config(state="disabled")
-            
-            self.log_message("开始自动截图模式")
-            self.log_message(f"截图间隔: {self.capture_interval.get():.1f}秒")
-            self.log_message(f"引擎深度: {self.engine_depth.get()}")
-            self.log_message(f"自动分析: {'开启' if self.auto_analyze.get() else '关闭'}")
-            
-            # 启动自动截图线程
-            self.log_message("正在启动自动截图线程...")
-            self.auto_capture_thread = threading.Thread(target=self.auto_capture_loop, daemon=True)
-            self.auto_capture_thread.start()
-            self.log_message("✓ 自动截图线程已启动")
-            
-        except Exception as e:
-            self.log_message(f"✗ 启动自动截图失败: {e}")
-            messagebox.showerror("错误", f"启动自动截图失败: {e}")
+        if not self.recognizer:
+            messagebox.showerror("错误", "深度学习识别器未就绪，无法开始自动截图")
+            return
+        
+        self.auto_capture_running = True
+        self.auto_capture_btn.config(text="停止自动截图")
+        
+        # 禁用相关控件
+        self.recognize_btn.config(state="disabled")
+        
+        self.log_message("开始自动截图模式")
+        self.log_message(f"截图间隔: {self.capture_interval.get():.1f}秒")
+        self.log_message(f"引擎深度: {self.engine_depth.get()}")
+        self.log_message(f"自动分析: {'开启' if self.auto_analyze.get() else '关闭'}")
+        
+        # 启动自动截图线程
+        self.auto_capture_thread = threading.Thread(target=self.auto_capture_loop, daemon=True)
+        self.auto_capture_thread.start()
     
     def stop_auto_capture(self):
         """停止自动截图"""
@@ -322,44 +299,28 @@ class ChessGUI:
     
     def auto_capture_loop(self):
         """自动截图循环（后台线程）"""
-        self.log_message("📸 自动截图循环开始")
-        capture_count = 0
-        
         while self.auto_capture_running:
             try:
-                capture_count += 1
                 # 截取屏幕
-                self.log_message(f"正在截取第{capture_count}次屏幕...")
+                self.log_message("正在截取屏幕...")
                 screenshot = pyautogui.screenshot()
-                self.log_message(f"✓ 截图完成，尺寸: {screenshot.size}")
                 
                 # 转换为OpenCV格式
-                self.log_message("正在转换图像格式...")
-                screenshot_cv = cv2.cvtColor(np.array(screenshot), cv2.COLOR_RGB2BGR)
-                self.log_message(f"✓ 格式转换完成，OpenCV尺寸: {screenshot_cv.shape}")
+                screenshot_cv = cv2.cvtColor(cv2.array(screenshot), cv2.COLOR_RGB2BGR)
                 
                 # 保存临时截图
                 temp_path = "temp_screenshot.png"
                 cv2.imwrite(temp_path, screenshot_cv)
-                self.log_message(f"✓ 临时文件已保存: {temp_path}")
                 
                 # 在主线程中处理识别
                 self.root.after(0, self.process_auto_capture, screenshot_cv, temp_path)
                 
                 # 等待指定间隔
-                interval = self.capture_interval.get()
-                self.log_message(f"等待 {interval:.1f} 秒后进行下次截图...")
-                time.sleep(interval)
+                time.sleep(self.capture_interval.get())
                 
             except Exception as e:
-                self.log_message(f"✗ 自动截图出错: {type(e).__name__}: {e}")
-                import traceback
-                error_details = traceback.format_exc()
-                self.log_message(f"错误详情: {error_details}")
-                self.root.after(0, lambda: messagebox.showerror("自动截图错误", f"截图过程中发生错误:\n{e}"))
+                self.root.after(0, self.log_message, f"✗ 自动截图出错: {e}")
                 break
-        
-        self.log_message("📸 自动截图循环结束")
     
     def process_auto_capture(self, image, temp_path):
         """处理自动截图的识别"""

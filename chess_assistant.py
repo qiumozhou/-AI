@@ -185,9 +185,12 @@ class ChineseChessAssistant:
         has_red_king = 'K' in fen
         return has_black_king and has_red_king
     
-    def analyze_position(self, fen):
+    def analyze_position(self, fen, side_to_move='w'):
         """
         使用引擎分析局面
+        参数:
+            fen: 棋局的FEN格式
+            side_to_move: 走棋方，'w'表示红方，'b'表示黑方
         返回最佳走法
         """
         if not self.engine_path or not os.path.exists(self.engine_path):
@@ -196,6 +199,16 @@ class ChineseChessAssistant:
         # 简单验证FEN格式
         if not fen or len(fen) < 10:
             return "FEN格式无效"
+        
+        # 修改FEN中的走棋方
+        fen_parts = fen.split()
+        if len(fen_parts) >= 2:
+            fen_parts[1] = side_to_move  # 设置走棋方
+            fen = ' '.join(fen_parts)
+        else:
+            # 如果FEN格式不完整，补充默认值
+            position = fen_parts[0] if fen_parts else fen
+            fen = f"{position} {side_to_move} - - 0 1"
         
         # 检查是否有足够的棋子（至少要有将/帅）
         if 'k' not in fen.lower() or 'K' not in fen:
@@ -271,6 +284,23 @@ class ChineseChessAssistant:
             import traceback
             traceback.print_exc()
             return f"引擎错误: {str(e)}"
+    
+    def analyze_both_sides(self, fen):
+        """
+        同时分析红方和黑方的最佳走法
+        返回: {'red': 红方最佳走法, 'black': 黑方最佳走法}
+        """
+        result = {}
+        
+        print("正在分析红方最佳走法...")
+        red_move = self.analyze_position(fen, 'w')  # 红方走棋
+        result['red'] = red_move
+        
+        print("正在分析黑方最佳走法...")
+        black_move = self.analyze_position(fen, 'b')  # 黑方走棋
+        result['black'] = black_move
+        
+        return result
     
     def format_move(self, move_uci, fen=None):
         """

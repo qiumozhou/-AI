@@ -14,7 +14,6 @@ import threading
 import time
 from pathlib import Path
 import cv2
-import numpy as np
 from PIL import Image, ImageTk
 import pyautogui
 
@@ -75,7 +74,7 @@ class ChessGUI:
             
             # 初始化象棋助手（用于引擎分析）
             self.log_message("正在初始化引擎...")
-            self.assistant = ChineseChessAssistant()
+        self.assistant = ChineseChessAssistant()
             if self.assistant.engine_path:
                 self.log_message("✓ Pikafish引擎初始化成功")
             else:
@@ -269,46 +268,24 @@ class ChessGUI:
     
     def start_auto_capture(self):
         """开始自动截图"""
-        try:
-            self.log_message("正在检查自动截图条件...")
-            
-            if not self.recognizer:
-                self.log_message("✗ 深度学习识别器未就绪")
-                messagebox.showerror("错误", "深度学习识别器未就绪，无法开始自动截图")
-                return
-            
-            self.log_message("✓ 识别器检查通过")
-            
-            # 测试截图功能
-            self.log_message("正在测试截图功能...")
-            try:
-                test_screenshot = pyautogui.screenshot()
-                self.log_message(f"✓ 截图测试成功，尺寸: {test_screenshot.size}")
-            except Exception as e:
-                self.log_message(f"✗ 截图测试失败: {e}")
-                messagebox.showerror("错误", f"截图功能测试失败: {e}")
-                return
-            
-            self.auto_capture_running = True
-            self.auto_capture_btn.config(text="停止自动截图")
-            
-            # 禁用相关控件
-            self.recognize_btn.config(state="disabled")
-            
-            self.log_message("开始自动截图模式")
-            self.log_message(f"截图间隔: {self.capture_interval.get():.1f}秒")
-            self.log_message(f"引擎深度: {self.engine_depth.get()}")
-            self.log_message(f"自动分析: {'开启' if self.auto_analyze.get() else '关闭'}")
-            
-            # 启动自动截图线程
-            self.log_message("正在启动自动截图线程...")
-            self.auto_capture_thread = threading.Thread(target=self.auto_capture_loop, daemon=True)
-            self.auto_capture_thread.start()
-            self.log_message("✓ 自动截图线程已启动")
-            
-        except Exception as e:
-            self.log_message(f"✗ 启动自动截图失败: {e}")
-            messagebox.showerror("错误", f"启动自动截图失败: {e}")
+        if not self.recognizer:
+            messagebox.showerror("错误", "深度学习识别器未就绪，无法开始自动截图")
+            return
+        
+        self.auto_capture_running = True
+        self.auto_capture_btn.config(text="停止自动截图")
+        
+        # 禁用相关控件
+        self.recognize_btn.config(state="disabled")
+        
+        self.log_message("开始自动截图模式")
+        self.log_message(f"截图间隔: {self.capture_interval.get():.1f}秒")
+        self.log_message(f"引擎深度: {self.engine_depth.get()}")
+        self.log_message(f"自动分析: {'开启' if self.auto_analyze.get() else '关闭'}")
+        
+        # 启动自动截图线程
+        self.auto_capture_thread = threading.Thread(target=self.auto_capture_loop, daemon=True)
+        self.auto_capture_thread.start()
     
     def stop_auto_capture(self):
         """停止自动截图"""
@@ -322,44 +299,28 @@ class ChessGUI:
     
     def auto_capture_loop(self):
         """自动截图循环（后台线程）"""
-        self.log_message("📸 自动截图循环开始")
-        capture_count = 0
-        
         while self.auto_capture_running:
             try:
-                capture_count += 1
                 # 截取屏幕
-                self.log_message(f"正在截取第{capture_count}次屏幕...")
+                self.log_message("正在截取屏幕...")
                 screenshot = pyautogui.screenshot()
-                self.log_message(f"✓ 截图完成，尺寸: {screenshot.size}")
                 
                 # 转换为OpenCV格式
-                self.log_message("正在转换图像格式...")
-                screenshot_cv = cv2.cvtColor(np.array(screenshot), cv2.COLOR_RGB2BGR)
-                self.log_message(f"✓ 格式转换完成，OpenCV尺寸: {screenshot_cv.shape}")
+                screenshot_cv = cv2.cvtColor(cv2.array(screenshot), cv2.COLOR_RGB2BGR)
                 
                 # 保存临时截图
                 temp_path = "temp_screenshot.png"
                 cv2.imwrite(temp_path, screenshot_cv)
-                self.log_message(f"✓ 临时文件已保存: {temp_path}")
                 
                 # 在主线程中处理识别
                 self.root.after(0, self.process_auto_capture, screenshot_cv, temp_path)
                 
                 # 等待指定间隔
-                interval = self.capture_interval.get()
-                self.log_message(f"等待 {interval:.1f} 秒后进行下次截图...")
-                time.sleep(interval)
+                time.sleep(self.capture_interval.get())
                 
             except Exception as e:
-                self.log_message(f"✗ 自动截图出错: {type(e).__name__}: {e}")
-                import traceback
-                error_details = traceback.format_exc()
-                self.log_message(f"错误详情: {error_details}")
-                self.root.after(0, lambda: messagebox.showerror("自动截图错误", f"截图过程中发生错误:\n{e}"))
+                self.root.after(0, self.log_message, f"✗ 自动截图出错: {e}")
                 break
-        
-        self.log_message("📸 自动截图循环结束")
     
     def process_auto_capture(self, image, temp_path):
         """处理自动截图的识别"""
@@ -381,7 +342,7 @@ class ChessGUI:
                     self.log_message("开始自动引擎分析（红/黑双方）...")
                     # 在后台线程中进行分析
                     threading.Thread(target=self.run_both_sides_analysis, daemon=True).start()
-            else:
+        else:
                 self.log_message("✗ 截图识别失败，未检测到有效棋盘")
                 
         except Exception as e:
@@ -443,11 +404,11 @@ class ChessGUI:
                 if self.auto_analyze.get() and self.assistant and self.assistant.engine_path:
                     self.log_message("开始自动引擎分析（红/黑双方）...")
                     self.run_both_sides_analysis()
-            else:
+                    else:
                 self.log_message("✗ 识别失败")
                 self.root.after(0, self.recognition_failed)
                 
-        except Exception as e:
+            except Exception as e:
             self.log_message(f"✗ 识别出错: {e}")
             self.root.after(0, self.recognition_failed)
     
@@ -500,7 +461,7 @@ class ChessGUI:
                     if char.isdigit():
                         # 数字表示空格数量
                         line += " · " * int(char)
-                    else:
+            else:
                         # 棋子
                         symbol = piece_symbols.get(char, char)
                         line += f" {symbol} "
@@ -540,6 +501,95 @@ class ChessGUI:
         thread = threading.Thread(target=self.run_both_sides_analysis, daemon=True)
         thread.start()
     
+    def run_analysis_with_depth(self):
+        """使用自定义深度运行引擎分析（后台线程）"""
+        try:
+            depth = self.engine_depth.get()
+            self.log_message(f"开始引擎分析（深度: {depth}）...")
+            
+            # 修改助手中的引擎深度
+            original_analyze = self.assistant.analyze_position
+            
+            def analyze_with_custom_depth(fen):
+                """使用自定义深度的分析函数"""
+                if not self.assistant.engine_path or not os.path.exists(self.assistant.engine_path):
+                    return "引擎未就绪，请先下载Pikafish引擎"
+                
+                # 简单验证FEN格式
+                if not fen or len(fen) < 10:
+                    return "FEN格式无效"
+                
+                process = None
+                try:
+                    import subprocess
+                    
+                    # 启动引擎进程
+                    startupinfo = None
+                    creationflags = 0
+                    
+                    if sys.platform == 'win32':
+                        startupinfo = subprocess.STARTUPINFO()
+                        startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                        startupinfo.wShowWindow = subprocess.SW_HIDE
+                        creationflags = 0x08000000  # CREATE_NO_WINDOW
+                    
+                    # 简化的一次性通信方式，设置NNUE文件路径
+                    engine_dir = Path(self.assistant.engine_path).parent
+                    nnue_path = engine_dir / "pikafish.nnue"
+                    input_commands = f"uci\nisready\nsetoption name EvalFile value {nnue_path.absolute()}\nposition fen {fen}\ngo depth {depth}\nquit\n"
+                    
+                    # 设置引擎工作目录并启动进程
+                    process = subprocess.Popen(
+                        [self.assistant.engine_path],
+                        stdin=subprocess.PIPE,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        cwd=str(engine_dir),  # 设置工作目录
+                        creationflags=0x08000000 if sys.platform == 'win32' else 0
+                    )
+                    
+                    # 使用communicate进行通信
+                    stdout, stderr = process.communicate(input=input_commands.encode(), timeout=30)
+                    
+                    # 解析输出
+                    output = stdout.decode('utf-8', errors='ignore')
+                    lines = output.split('\n')
+                    
+                    for line in lines:
+                        line = line.strip()
+                        if line.startswith('bestmove'):
+                            parts = line.split()
+                            if len(parts) >= 2:
+                                return parts[1]
+                    
+                    return "未找到最佳走法"
+                    
+                except subprocess.TimeoutExpired:
+                    process.kill() 
+                    return "分析超时"
+                except Exception as e:
+                    return f"引擎错误: {str(e)}"
+            
+            # 使用自定义深度进行分析
+            best_move = analyze_with_custom_depth(self.current_fen)
+            
+            if best_move and best_move != "未找到最佳走法" and not best_move.startswith("引擎"):
+                self.log_message(f"✓ 分析完成（深度{depth}）")
+                self.log_message(f"最佳走法: {best_move}")
+                
+                # 格式化走法
+                move_desc = self.assistant.format_move(best_move, self.current_fen)
+                
+                # 在主线程中更新GUI
+                self.root.after(0, self.update_analysis_results, best_move, move_desc)
+            else:
+                self.log_message(f"✗ 分析失败: {best_move}")
+                self.root.after(0, self.analysis_failed)
+            
+        except Exception as e:
+            self.log_message(f"✗ 分析出错: {e}")
+            self.root.after(0, self.analysis_failed)
+    
     def run_both_sides_analysis(self):
         """同时分析红方和黑方的最佳走法（后台线程）"""
         try:
@@ -570,6 +620,23 @@ class ChessGUI:
         except Exception as e:
             self.log_message(f"✗ 双方分析出错: {e}")
             self.root.after(0, self.analysis_failed)
+    
+    def update_analysis_results(self, best_move, move_desc):
+        """更新分析结果显示"""
+        result_text = f"最佳走法: {best_move}\n"
+        result_text += f"走法说明: {move_desc}\n"
+        result_text += f"搜索深度: {self.engine_depth.get()}\n\n"
+        result_text += "建议:\n"
+        result_text += f"从 {best_move[:2]} 移动到 {best_move[2:4]}\n"
+        
+        self.analysis_text.config(state="normal")
+        self.analysis_text.delete(1.0, tk.END)
+        self.analysis_text.insert(1.0, result_text)
+        self.analysis_text.config(state="disabled")
+        
+        # 重新启用分析按钮（如果不在自动截图模式）
+        if not self.auto_capture_running:
+            self.analyze_btn.config(state="normal")
     
     def update_both_sides_results(self, red_move, red_desc, black_move, black_desc):
         """更新双方分析结果显示"""
