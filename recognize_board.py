@@ -1,6 +1,6 @@
 """
-中国象棋棋盘识别 - 统一入口
-支持两种识别方式：深度学习 和 OCR
+中国象棋棋盘识别 - 深度学习识别
+使用高精度的ONNX深度学习模型进行棋盘识别
 """
 
 import sys
@@ -60,7 +60,8 @@ def recognize_with_deep_learning(image_path):
         recognizer = CChessDeepRecognizer()
         
         if recognizer.pose_model is None:
-            print("⚠ 模型未加载，切换到OCR方案")
+            print("✗ ONNX模型未加载")
+            print("请运行: python download_nnue.py")
             return None
         
         # 读取图片
@@ -76,38 +77,6 @@ def recognize_with_deep_learning(image_path):
         
     except Exception as e:
         print(f"✗ 深度学习识别失败: {e}")
-        return None
-
-
-def recognize_with_ocr(image_path):
-    """使用OCR方案识别"""
-    try:
-        from universal_chess_detector import UniversalChessDetector
-        
-        print("\n使用方案: OCR识别")
-        print("="*60)
-        
-        detector = UniversalChessDetector(debug=False)
-        
-        if not detector.ocr:
-            print("✗ OCR未初始化")
-            return None
-        
-        # 读取图片
-        image = cv2.imread(image_path)
-        if image is None:
-            print(f"✗ 无法读取图片: {image_path}")
-            return None
-        
-        print(f"图片尺寸: {image.shape[1]}x{image.shape[0]}")
-        
-        # 识别
-        fen = detector.recognize_from_image(image)
-        
-        return fen
-        
-    except Exception as e:
-        print(f"✗ OCR识别失败: {e}")
         import traceback
         traceback.print_exc()
         return None
@@ -119,8 +88,6 @@ def main():
     
     parser = argparse.ArgumentParser(description='中国象棋棋盘识别')
     parser.add_argument('image', help='输入图片路径')
-    parser.add_argument('--method', choices=['deep', 'ocr', 'auto'], default='auto',
-                        help='识别方法: deep(深度学习), ocr(OCR), auto(自动选择，默认)')
     parser.add_argument('--analyze', action='store_true', help='识别后进行引擎分析')
     
     args = parser.parse_args()
@@ -137,21 +104,9 @@ def main():
     print("="*60)
     print(f"输入图片: {image_path}")
     
-    fen = None
-    
-    # 根据选择的方法进行识别
-    if args.method == 'deep':
-        fen = recognize_with_deep_learning(image_path)
-    elif args.method == 'ocr':
-        fen = recognize_with_ocr(image_path)
-    else:  # auto
-        # 先尝试深度学习，失败则用OCR
-        print("\n智能识别模式：优先使用深度学习")
-        fen = recognize_with_deep_learning(image_path)
-        
-        if fen is None:
-            print("\n深度学习识别失败，切换到OCR方案...")
-            fen = recognize_with_ocr(image_path)
+    # 使用深度学习识别
+    print("\n使用深度学习识别")
+    fen = recognize_with_deep_learning(image_path)
     
     # 显示结果
     if fen:
@@ -190,11 +145,11 @@ def main():
         print("\n可能的原因:")
         print("1. 图片中没有清晰的棋盘")
         print("2. 棋子不清晰或摆放不正")
-        print("3. 模型未下载或加载失败")
+        print("3. ONNX模型未下载或加载失败")
         print("\n建议:")
         print("- 确保图片清晰")
-        print("- 尝试不同的识别方法: --method ocr 或 --method deep")
-        print("- 查看 RECOGNITION_GUIDE.md 了解详情")
+        print("- 运行 python download_nnue.py 下载模型")
+        print("- 安装依赖: pip install onnxruntime")
 
 
 if __name__ == "__main__":
@@ -207,13 +162,12 @@ if __name__ == "__main__":
         print("  python recognize_board.py <图片路径> [选项]")
         print("\n示例:")
         print("  python recognize_board.py images/1.png")
-        print("  python recognize_board.py images/1.png --method deep")
-        print("  python recognize_board.py images/1.png --method ocr")
         print("  python recognize_board.py images/1.png --analyze")
         print("\n选项:")
-        print("  --method deep/ocr/auto  选择识别方法（默认auto）")
         print("  --analyze               识别后进行引擎分析")
+        print("\n说明:")
+        print("  本程序使用深度学习ONNX模型进行识别")
+        print("  首次使用请运行: python download_nnue.py")
         print("\n" + "="*60)
     else:
         main()
-

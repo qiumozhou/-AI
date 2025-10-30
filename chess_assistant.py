@@ -29,15 +29,13 @@ class ChineseChessAssistant:
         self.screenshot_interval = 2  # 截图间隔（秒）
         self.engine_path = None
         self.current_fen = None
-        self.yolo_detector = None
-        self.ocr_detector = None
-        self.deep_learning_detector = None  # 新增：深度学习识别器
+        self.deep_learning_detector = None  # 深度学习识别器
         
         # 初始化引擎
         self.setup_engine()
         
-        # 尝试加载检测器（深度学习 > OCR > YOLO）
-        self.setup_detectors()
+        # 加载深度学习检测器
+        self.setup_detector()
         
     def setup_engine(self):
         """设置Pikafish引擎"""
@@ -69,11 +67,10 @@ class ChineseChessAssistant:
         else:
             print("当前仅支持Windows平台")
     
-    def setup_detectors(self):
-        """设置各种检测器（按优先级加载）"""
-        detectors_loaded = []
+    def setup_detector(self):
+        """设置深度学习检测器"""
         
-        # 1. 尝试加载深度学习识别器（最高优先级，准确率最高）
+        # 加载深度学习识别器
         try:
             from cchess_deep_recognizer import CChessDeepRecognizer
             models_dir = Path("models/cchess_recognition")
@@ -83,51 +80,26 @@ class ChineseChessAssistant:
                (models_dir / "swinv2-nano_cchess16.onnx").exists():
                 self.deep_learning_detector = CChessDeepRecognizer()
                 if self.deep_learning_detector.pose_model and self.deep_learning_detector.classifier_model:
-                    print("✓ 深度学习识别器已加载（推荐，准确率：85-90%）")
-                    detectors_loaded.append("深度学习")
+                    print("✓ 深度学习识别器已加载（准确率：85-90%）")
                 else:
                     self.deep_learning_detector = None
+                    print("✗ 深度学习模型加载失败")
             else:
-                print("ℹ 深度学习模型未找到")
+                print("✗ 深度学习模型未找到")
                 print(f"  模型位置: {models_dir.absolute()}")
+                print("  请运行 python download_nnue.py 下载模型")
+                self.deep_learning_detector = None
         except Exception as e:
-            print(f"深度学习识别器加载失败: {e}")
+            print(f"✗ 深度学习识别器加载失败: {e}")
             self.deep_learning_detector = None
-        
-        # 2. 尝试加载OCR识别器（次优先级）
-        try:
-            from universal_chess_detector import UniversalChessDetector
-            self.ocr_detector = UniversalChessDetector(debug=False)
-            if self.ocr_detector.ocr:
-                print("✓ OCR识别器已加载（备用方案，准确率：70-80%）")
-                detectors_loaded.append("OCR")
-        except Exception as e:
-            print(f"OCR识别器加载失败: {e}")
-            self.ocr_detector = None
-        
-        # 3. 尝试加载YOLO检测器（第三选择）
-        try:
-            from yolo_chess_detector import YOLOChessDetector, YOLO_AVAILABLE
             
-            if YOLO_AVAILABLE:
-                model_path = Path("models/chess_yolo.pt")
-                if model_path.exists():
-                    self.yolo_detector = YOLOChessDetector(str(model_path))
-                    print("✓ YOLO检测器已加载")
-                    detectors_loaded.append("YOLO")
-        except Exception as e:
-            print(f"YOLO检测器加载失败: {e}")
-            self.yolo_detector = None
-        
-        # 汇总加载情况
-        if detectors_loaded:
-            print(f"\n识别方案: {' > '.join(detectors_loaded)} > 传统方法")
+        if self.deep_learning_detector:
+            print("\n识别方案: 深度学习识别")
         else:
-            print("\n⚠ 未加载任何高级识别器，将使用传统颜色识别")
-            print("推荐安装:")
-            print("  1. 深度学习方案（最准确）: 运行 python download_cchess_models.py")
-            print("  2. OCR方案: pip install paddleocr")
-            print("  3. YOLO方案: pip install ultralytics")
+            print("\n⚠ 深度学习识别器未加载，程序将无法工作")
+            print("请确保:")
+            print("  1. 已下载ONNX模型文件")
+            print("  2. 安装了 onnxruntime: pip install onnxruntime")
             
     def capture_screen(self, region=None):
         """
@@ -162,10 +134,8 @@ class ChineseChessAssistant:
     
     def recognize_pieces(self, board_image):
         """
-        识别棋盘上的棋子
+        使用深度学习识别棋盘上的棋子
         返回FEN格式的棋局描述
-        
-        识别优先级：深度学习 > OCR > YOLO > 传统方法
         """
         try:
             # 调整图像大小以便处理
@@ -177,47 +147,26 @@ class ChineseChessAssistant:
             # 保存调试图像
             cv2.imwrite("debug_board_original.png", board_image)
             
-            # 1. 优先使用深度学习识别器（最高准确率）
-            if hasattr(self, 'deep_learning_detector') and self.deep_learning_detector:
-                if self.deep_learning_detector.pose_model and self.deep_learning_detector.classifier_model:
-                    print("方案1: 使用深度学习识别（准确率：85-90%）...")
-                    try:
-                        fen = self.deep_learning_detector.recognize(board_image)
-                        if fen and self._validate_fen(fen):
-                            print("✓ 深度学习识别成功")
-                            return fen
-                        print("⚠ 深度学习识别结果不完整，尝试备用方案...")
-                    except Exception as e:
-                        print(f"深度学习识别出错: {e}")
-            
-            # 2. 其次使用OCR检测器
-            if hasattr(self, 'ocr_detector') and self.ocr_detector and self.ocr_detector.ocr:
-                print("方案2: 使用OCR识别棋子汉字...")
+            # 使用深度学习识别器
+            if self.deep_learning_detector and self.deep_learning_detector.pose_model:
+                print("正在使用深度学习识别...")
                 try:
-                    fen = self.ocr_detector.recognize_from_image(board_image)
+                    fen = self.deep_learning_detector.recognize(board_image)
                     if fen and self._validate_fen(fen):
-                        print("✓ OCR识别成功")
+                        print("✓ 深度学习识别成功")
                         return fen
-                    print("⚠ OCR识别结果不完整，尝试其他方法...")
+                    else:
+                        print("⚠ 深度学习识别结果无效")
+                        # 返回初始局面作为后备
+                        return "rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w - - 0 1"
                 except Exception as e:
-                    print(f"OCR识别出错: {e}")
-            
-            # 3. 再次使用YOLO检测器（如果可用）
-            if self.yolo_detector and self.yolo_detector.model:
-                print("方案3: 使用YOLO深度学习识别...")
-                try:
-                    fen = self.yolo_detector.recognize_from_image(board_image)
-                    if fen and self._validate_fen(fen):
-                        print("✓ YOLO识别成功")
-                        return fen
-                    print("⚠ YOLO识别失败")
-                except Exception as e:
-                    print(f"YOLO识别出错: {e}")
-            
-            # 4. 最后使用传统颜色识别方法
-            print("方案4: 使用传统颜色识别方法...")
-            fen = self._analyze_board_image(board_image)
-            return fen
+                    print(f"深度学习识别出错: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    return "rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w - - 0 1"
+            else:
+                print("✗ 深度学习识别器未加载")
+                return "rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w - - 0 1"
             
         except Exception as e:
             print(f"棋子识别出错: {e}")
