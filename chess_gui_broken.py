@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
-中国象棋识别助手 - 简洁版GUI
-隐藏棋盘状态，专注于识别和分析功能
+中国象棋识别助手 - 图形界面版本
+使用深度学习技术识别中国象棋棋局并提供最佳走法建议
+支持自动截图和自定义引擎深度
 """
 
 import sys
@@ -28,9 +30,16 @@ from chess_assistant import ChineseChessAssistant
 class ChessGUI:
     def __init__(self):
         self.root = tk.Tk()
-        self.root.title("中国象棋识别助手 - 简洁版")
-        self.root.geometry("900x700")
+        self.root.title("中国象棋识别助手 - 增强版")
+        self.root.geometry("1200x800")
         self.root.resizable(True, True)
+        
+        # 设置图标（如果存在）
+        try:
+            # 这里可以添加程序图标
+            pass
+        except:
+            pass
         
         # 初始化变量
         self.current_image_path = None
@@ -41,7 +50,7 @@ class ChessGUI:
         # 自动截图相关变量
         self.auto_capture_running = False
         self.auto_capture_thread = None
-        self.capture_interval = tk.DoubleVar(value=1.0)  # 默认1秒间隔
+        self.capture_interval = tk.DoubleVar(value=1.0)  # 默认1秒间隔，更快反馈
         self.engine_depth = tk.IntVar(value=8)  # 默认搜索深度8
         self.auto_analyze = tk.BooleanVar(value=True)  # 是否自动分析
         
@@ -66,7 +75,7 @@ class ChessGUI:
             
             # 初始化象棋助手（用于引擎分析）
             self.log_message("正在初始化引擎...")
-            self.assistant = ChineseChessAssistant()
+        self.assistant = ChineseChessAssistant()
             if self.assistant.engine_path:
                 self.log_message("✓ Pikafish引擎初始化成功")
             else:
@@ -85,12 +94,12 @@ class ChessGUI:
         # 配置网格权重
         self.root.columnconfigure(0, weight=1)
         self.root.rowconfigure(0, weight=1)
-        main_frame.columnconfigure(0, weight=1)
-        main_frame.rowconfigure(2, weight=1)
+        main_frame.columnconfigure(1, weight=1)
+        main_frame.rowconfigure(3, weight=1)
         
         # 1. 文件选择和自动截图区域
         file_frame = ttk.LabelFrame(main_frame, text="图片选择 & 自动截图", padding="5")
-        file_frame.grid(row=0, column=0, sticky=(tk.W, tk.E), pady=(0, 10))
+        file_frame.grid(row=0, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=(0, 10))
         file_frame.columnconfigure(1, weight=1)
         
         # 文件选择行
@@ -117,17 +126,12 @@ class ChessGUI:
         # 更新间隔显示
         self.capture_interval.trace('w', self.update_interval_display)
         
-        auto_btn_frame = ttk.Frame(file_frame)
-        auto_btn_frame.grid(row=1, column=2, padx=(10, 0), pady=(10, 0))
-        
-        self.auto_capture_btn = ttk.Button(auto_btn_frame, text="▶️ 开始自动截图", command=self.toggle_auto_capture)
-        self.auto_capture_btn.grid(row=0, column=0)
-        
-        ttk.Button(auto_btn_frame, text="📸 测试截图", command=self.test_single_capture).grid(row=0, column=1, padx=(5, 0))
+        self.auto_capture_btn = ttk.Button(file_frame, text="开始自动截图", command=self.toggle_auto_capture)
+        self.auto_capture_btn.grid(row=1, column=2, padx=(10, 0), pady=(10, 0))
         
         # 2. 引擎设置区域
         engine_frame = ttk.LabelFrame(main_frame, text="引擎设置", padding="5")
-        engine_frame.grid(row=1, column=0, sticky=(tk.W, tk.E), pady=(0, 10))
+        engine_frame.grid(row=1, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=(0, 10))
         engine_frame.columnconfigure(1, weight=1)
         
         ttk.Label(engine_frame, text="搜索深度:").grid(row=0, column=0, sticky=tk.W)
@@ -145,31 +149,48 @@ class ChessGUI:
         
         ttk.Checkbutton(engine_frame, text="自动分析", variable=self.auto_analyze).grid(row=0, column=2, padx=(20, 0))
         
-        # 3. 结果显示区域（全宽，无棋盘状态）
-        result_frame = ttk.LabelFrame(main_frame, text="识别结果与分析", padding="5")
-        result_frame.grid(row=2, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        # 3. 结果显示区域
+        result_frame = ttk.Frame(main_frame)
+        result_frame.grid(row=2, column=0, columnspan=2, sticky=(tk.W, tk.E, tk.N, tk.S), pady=(0, 10))
         result_frame.columnconfigure(0, weight=1)
-        result_frame.rowconfigure(3, weight=1)
+        result_frame.columnconfigure(1, weight=1)
+        result_frame.rowconfigure(0, weight=1)
+        
+        # 3.1 左侧：棋盘显示（隐藏）
+        # board_frame = ttk.LabelFrame(result_frame, text="棋盘状态", padding="5")
+        # board_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), padx=(0, 5))
+        # board_frame.columnconfigure(0, weight=1)
+        # board_frame.rowconfigure(0, weight=1)
+        
+        # self.board_text = scrolledtext.ScrolledText(board_frame, height=12, width=35, 
+        #                                            font=("Consolas", 11), state="disabled")
+        # self.board_text.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        
+        # 全宽的结果区域
+        info_frame = ttk.LabelFrame(result_frame, text="识别结果与分析", padding="5")
+        info_frame.grid(row=0, column=0, columnspan=2, sticky=(tk.W, tk.E, tk.N, tk.S))
+        info_frame.columnconfigure(0, weight=1)
+        info_frame.rowconfigure(1, weight=1)
         
         # FEN结果
-        ttk.Label(result_frame, text="FEN:").grid(row=0, column=0, sticky=tk.W, pady=(0, 5))
-        self.fen_text = scrolledtext.ScrolledText(result_frame, height=3, width=60, 
+        ttk.Label(info_frame, text="FEN:").grid(row=0, column=0, sticky=tk.W, pady=(0, 5))
+        self.fen_text = scrolledtext.ScrolledText(info_frame, height=3, width=40, 
                                                  font=("Consolas", 9), state="disabled")
         self.fen_text.grid(row=1, column=0, sticky=(tk.W, tk.E), pady=(0, 10))
         
         # 分析按钮
-        self.analyze_btn = ttk.Button(result_frame, text="分析双方走法", command=self.start_analysis, state="disabled")
+        self.analyze_btn = ttk.Button(info_frame, text="分析双方走法", command=self.start_analysis, state="disabled")
         self.analyze_btn.grid(row=2, column=0, pady=(0, 10))
         
-        # 分析结果（扩大显示区域）
-        ttk.Label(result_frame, text="最佳走法:").grid(row=3, column=0, sticky=tk.W, pady=(0, 5))
-        self.analysis_text = scrolledtext.ScrolledText(result_frame, height=10, width=60, 
-                                                      font=("Consolas", 10), state="disabled")
+        # 分析结果
+        ttk.Label(info_frame, text="最佳走法:").grid(row=3, column=0, sticky=tk.W, pady=(0, 5))
+        self.analysis_text = scrolledtext.ScrolledText(info_frame, height=6, width=40, 
+                                                      font=("Consolas", 9), state="disabled")
         self.analysis_text.grid(row=4, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
         
         # 4. 日志输出区域
         log_frame = ttk.LabelFrame(main_frame, text="运行日志", padding="5")
-        log_frame.grid(row=3, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        log_frame.grid(row=3, column=0, columnspan=2, sticky=(tk.W, tk.E, tk.N, tk.S))
         log_frame.columnconfigure(0, weight=1)
         log_frame.rowconfigure(0, weight=1)
         
@@ -177,7 +198,7 @@ class ChessGUI:
         self.log_text.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
         
         # 初始化日志
-        self.log_message("中国象棋识别助手 - 简洁版已启动")
+        self.log_message("中国象棋识别助手 - 增强版已启动")
         self.log_message("=" * 50)
         
         if self.recognizer:
@@ -249,137 +270,59 @@ class ChessGUI:
     
     def start_auto_capture(self):
         """开始自动截图"""
-        try:
-            self.log_message("正在检查自动截图条件...")
-            
-            if not self.recognizer:
-                self.log_message("✗ 深度学习识别器未就绪")
-                messagebox.showerror("错误", "深度学习识别器未就绪，无法开始自动截图")
-                return
-            
-            self.log_message("✓ 识别器检查通过")
-            
-            # 测试截图功能
-            self.log_message("正在测试截图功能...")
-            try:
-                test_screenshot = pyautogui.screenshot()
-                self.log_message(f"✓ 截图测试成功，尺寸: {test_screenshot.size}")
-            except Exception as e:
-                self.log_message(f"✗ 截图测试失败: {e}")
-                messagebox.showerror("错误", f"截图功能测试失败: {e}")
-                return
-            
-            self.auto_capture_running = True
-            self.auto_capture_btn.config(text="🔴 停止自动截图")
-            
-            # 更新窗口标题显示状态
-            self.root.title("中国象棋识别助手 - 🔴 自动截图运行中")
-            
-            # 禁用相关控件
-            self.recognize_btn.config(state="disabled")
-            
-            self.log_message("开始自动截图模式")
-            self.log_message(f"截图间隔: {self.capture_interval.get():.1f}秒")
-            self.log_message(f"引擎深度: {self.engine_depth.get()}")
-            self.log_message(f"自动分析: {'开启' if self.auto_analyze.get() else '关闭'}")
-            
-            # 启动自动截图线程
-            self.log_message("正在启动自动截图线程...")
-            self.auto_capture_thread = threading.Thread(target=self.auto_capture_loop, daemon=True)
-            self.auto_capture_thread.start()
-            self.log_message("✓ 自动截图线程已启动")
-            
-        except Exception as e:
-            self.log_message(f"✗ 启动自动截图失败: {e}")
-            messagebox.showerror("错误", f"启动自动截图失败: {e}")
+        if not self.recognizer:
+            messagebox.showerror("错误", "深度学习识别器未就绪，无法开始自动截图")
+            return
+        
+        self.auto_capture_running = True
+        self.auto_capture_btn.config(text="停止自动截图")
+        
+        # 禁用相关控件
+        self.recognize_btn.config(state="disabled")
+        
+        self.log_message("开始自动截图模式")
+        self.log_message(f"截图间隔: {self.capture_interval.get():.1f}秒")
+        self.log_message(f"引擎深度: {self.engine_depth.get()}")
+        self.log_message(f"自动分析: {'开启' if self.auto_analyze.get() else '关闭'}")
+        
+        # 启动自动截图线程
+        self.auto_capture_thread = threading.Thread(target=self.auto_capture_loop, daemon=True)
+        self.auto_capture_thread.start()
     
     def stop_auto_capture(self):
         """停止自动截图"""
         self.auto_capture_running = False
-        self.auto_capture_btn.config(text="▶️ 开始自动截图")
-        
-        # 恢复窗口标题
-        self.root.title("中国象棋识别助手 - 简洁版")
+        self.auto_capture_btn.config(text="开始自动截图")
         
         # 重新启用控件
         self.recognize_btn.config(state="normal" if self.current_image_path else "disabled")
         
-        self.log_message("⏹️ 已停止自动截图模式")
-    
-    def test_single_capture(self):
-        """测试单次截图"""
-        self.log_message("🧪 开始测试截图功能...")
-        
-        try:
-            # 测试截图
-            screenshot = pyautogui.screenshot()
-            self.log_message(f"✅ 截图测试成功，尺寸: {screenshot.size}")
-            
-            # 转换格式
-            screenshot_cv = cv2.cvtColor(np.array(screenshot), cv2.COLOR_RGB2BGR)
-            self.log_message(f"✅ 图像转换成功，OpenCV尺寸: {screenshot_cv.shape}")
-            
-            # 保存测试图像
-            cv2.imwrite("debug_test_screenshot.png", screenshot_cv)
-            self.log_message("✅ 测试图像已保存: debug_test_screenshot.png")
-            
-            # 如果有识别器，进行测试识别
-            if self.recognizer:
-                self.log_message("🔍 开始测试识别...")
-                fen = self.recognizer.recognize(screenshot_cv)
-                if fen:
-                    self.log_message(f"✅ 识别测试成功")
-                    self.log_message(f"识别结果: {fen.strip()}")
-                else:
-                    self.log_message("❓ 识别测试：未检测到棋盘")
-            
-            self.log_message("🎯 单次截图测试完成！")
-            messagebox.showinfo("测试成功", "截图功能工作正常！\n请查看日志区域的详细信息")
-            
-        except Exception as e:
-            self.log_message(f"❌ 截图测试失败: {e}")
-            messagebox.showerror("测试失败", f"截图功能测试失败:\n{e}")
+        self.log_message("已停止自动截图模式")
     
     def auto_capture_loop(self):
         """自动截图循环（后台线程）"""
-        self.log_message("📸 自动截图循环开始")
-        capture_count = 0
-        
         while self.auto_capture_running:
             try:
-                capture_count += 1
                 # 截取屏幕
-                self.log_message(f"正在截取第{capture_count}次屏幕...")
+                self.log_message("正在截取屏幕...")
                 screenshot = pyautogui.screenshot()
-                self.log_message(f"✓ 截图完成，尺寸: {screenshot.size}")
                 
                 # 转换为OpenCV格式
-                self.log_message("正在转换图像格式...")
                 screenshot_cv = cv2.cvtColor(np.array(screenshot), cv2.COLOR_RGB2BGR)
-                self.log_message(f"✓ 格式转换完成，OpenCV尺寸: {screenshot_cv.shape}")
                 
                 # 保存临时截图
                 temp_path = "temp_screenshot.png"
                 cv2.imwrite(temp_path, screenshot_cv)
-                self.log_message(f"✓ 临时文件已保存: {temp_path}")
                 
                 # 在主线程中处理识别
                 self.root.after(0, self.process_auto_capture, screenshot_cv, temp_path)
                 
                 # 等待指定间隔
-                interval = self.capture_interval.get()
-                self.log_message(f"等待 {interval:.1f} 秒后进行下次截图...")
-                time.sleep(interval)
+                time.sleep(self.capture_interval.get())
                 
             except Exception as e:
-                self.log_message(f"✗ 自动截图出错: {type(e).__name__}: {e}")
-                import traceback
-                error_details = traceback.format_exc()
-                self.log_message(f"错误详情: {error_details}")
-                self.root.after(0, lambda: messagebox.showerror("自动截图错误", f"截图过程中发生错误:\n{e}"))
+                self.root.after(0, self.log_message, f"✗ 自动截图出错: {e}")
                 break
-        
-        self.log_message("📸 自动截图循环结束")
     
     def process_auto_capture(self, image, temp_path):
         """处理自动截图的识别"""
@@ -401,8 +344,8 @@ class ChessGUI:
                     self.log_message("开始自动引擎分析（红/黑双方）...")
                     # 在后台线程中进行分析
                     threading.Thread(target=self.run_both_sides_analysis, daemon=True).start()
-            else:
-                self.log_message("✗ 截图识别失败，未检测到有效棋盘")
+        else:
+                        self.log_message("✗ 截图识别失败，未检测到有效棋盘")
                 
         except Exception as e:
             self.log_message(f"✗ 处理截图出错: {e}")
@@ -463,14 +406,14 @@ class ChessGUI:
                 if self.auto_analyze.get() and self.assistant and self.assistant.engine_path:
                     self.log_message("开始自动引擎分析（红/黑双方）...")
                     self.run_both_sides_analysis()
-            else:
-                self.log_message("✗ 识别失败")
-                self.root.after(0, self.recognition_failed)
+                    else:
+                    self.log_message("✗ 识别失败")
+                    self.root.after(0, self.recognition_failed)
                 
-        except Exception as e:
+            except Exception as e:
             self.log_message(f"✗ 识别出错: {e}")
             self.root.after(0, self.recognition_failed)
-    
+
     def update_recognition_results(self, fen):
         """更新识别结果显示"""
         # 更新FEN显示
@@ -478,6 +421,9 @@ class ChessGUI:
         self.fen_text.delete(1.0, tk.END)
         self.fen_text.insert(1.0, fen)
         self.fen_text.config(state="disabled")
+        
+        # 更新棋盘显示
+        self.display_board_from_fen(fen)
         
         # 启用分析按钮
         if self.assistant and self.assistant.engine_path:
@@ -492,6 +438,48 @@ class ChessGUI:
         if not self.auto_capture_running:
             self.recognize_btn.config(state="normal")
         messagebox.showerror("识别失败", "图片识别失败，请检查图片质量或模型文件")
+    
+    def display_board_from_fen(self, fen):
+        """从FEN显示棋盘"""
+        try:
+            piece_symbols = {
+                'r': '車', 'n': '馬', 'b': '象', 'a': '士', 'k': '将',
+                'c': '炮', 'p': '卒',
+                'R': '车', 'N': '马', 'B': '相', 'A': '仕', 'K': '帅',
+                'C': '砲', 'P': '兵'
+            }
+            
+            # 解析FEN
+            position = fen.split()[0]
+            rows = position.split('/')
+            
+            # 构建棋盘显示
+            board_display = "  " + "─" * 27 + "\n"
+            
+            for i, row in enumerate(rows):
+                line = f"{i+1:2d}│"
+                
+                for char in row:
+                    if char.isdigit():
+                        # 数字表示空格数量
+                        line += " · " * int(char)
+            else:
+                        # 棋子
+                        symbol = piece_symbols.get(char, char)
+                        line += f" {symbol} "
+                
+                board_display += line + "\n"
+            
+            board_display += "  " + "─" * 27 + "\n"
+            
+            # 更新棋盘显示（已隐藏）
+            # self.board_text.config(state="normal")
+            # self.board_text.delete(1.0, tk.END)
+            # self.board_text.insert(1.0, board_display)
+            # self.board_text.config(state="disabled")
+            
+        except Exception as e:
+            self.log_message(f"棋盘显示出错: {e}")
     
     def start_analysis(self):
         """开始引擎分析（在后台线程中运行）"""
@@ -522,7 +510,7 @@ class ChessGUI:
             self.log_message(f"开始双方引擎分析（深度: {depth}）...")
             
             # 使用analyze_both_sides方法
-            both_moves = self.assistant.analyze_both_sides(self.current_fen, depth)
+            both_moves = self.assistant.analyze_both_sides(self.current_fen)
             
             red_move = both_moves.get('red', '未找到最佳走法')
             black_move = both_moves.get('black', '未找到最佳走法')
@@ -572,8 +560,7 @@ class ChessGUI:
         
         result_text += "\n"
         result_text += f"搜索深度: {self.engine_depth.get()}\n"
-        result_text += "提示: 根据实际轮次选择对应走法\n\n"
-        result_text += "💡 使用交互式引擎分析，获得完整的评分过程"
+        result_text += "提示: 根据实际轮次选择对应走法"
         
         # 更新显示
         self.analysis_text.config(state="normal")
@@ -601,6 +588,11 @@ class ChessGUI:
         self.fen_text.config(state="normal")
         self.fen_text.delete(1.0, tk.END)
         self.fen_text.config(state="disabled")
+        
+        # 清空棋盘（已隐藏）
+        # self.board_text.config(state="normal")
+        # self.board_text.delete(1.0, tk.END)
+        # self.board_text.config(state="disabled")
         
         # 清空分析
         self.analysis_text.config(state="normal")

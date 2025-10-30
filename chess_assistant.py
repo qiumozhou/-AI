@@ -15,6 +15,8 @@ from pathlib import Path
 import subprocess
 import urllib.request
 import zipfile
+import threading
+import queue
 
 # Windows平台的subprocess标志
 if sys.platform == 'win32':
@@ -158,22 +160,22 @@ class ChineseChessAssistant:
                     else:
                         print("⚠ 深度学习识别结果无效")
                         # 返回初始局面作为后备
-                        return "rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w - - 0 1"
+                        return "rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w"
                 except Exception as e:
                     print(f"深度学习识别出错: {e}")
                     import traceback
                     traceback.print_exc()
-                    return "rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w - - 0 1"
+                    return "rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w"
             else:
                 print("✗ 深度学习识别器未加载")
-                return "rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w - - 0 1"
+                return "rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w"
             
         except Exception as e:
             print(f"棋子识别出错: {e}")
             import traceback
             traceback.print_exc()
             # 返回初始局面作为后备
-            return "rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w - - 0 1"
+            return "rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w"
     
     def _validate_fen(self, fen):
         """验证FEN的基本有效性"""
@@ -185,12 +187,13 @@ class ChineseChessAssistant:
         has_red_king = 'K' in fen
         return has_black_king and has_red_king
     
-    def analyze_position(self, fen, side_to_move='w'):
+    def analyze_position(self, fen, side_to_move='w', depth=8):
         """
         使用引擎分析局面
         参数:
             fen: 棋局的FEN格式
             side_to_move: 走棋方，'w'表示红方，'b'表示黑方
+            depth: 搜索深度
         返回最佳走法
         """
         if not self.engine_path or not os.path.exists(self.engine_path):
@@ -200,15 +203,15 @@ class ChineseChessAssistant:
         if not fen or len(fen) < 10:
             return "FEN格式无效"
         
-        # 修改FEN中的走棋方
+        # 修改FEN中的走棋方，使用简洁格式
         fen_parts = fen.split()
-        if len(fen_parts) >= 2:
-            fen_parts[1] = side_to_move  # 设置走棋方
-            fen = ' '.join(fen_parts)
+        if len(fen_parts) >= 1:
+            # 只保留位置和走棋方，不要其他附加信息
+            position = fen_parts[0]
+            fen = f"{position} {side_to_move}"
         else:
-            # 如果FEN格式不完整，补充默认值
-            position = fen_parts[0] if fen_parts else fen
-            fen = f"{position} {side_to_move} - - 0 1"
+            # 如果FEN格式不完整
+            fen = f"{fen} {side_to_move}"
         
         # 检查是否有足够的棋子（至少要有将/帅）
         if 'k' not in fen.lower() or 'K' not in fen:
@@ -237,68 +240,145 @@ class ChineseChessAssistant:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,  # 合并stderr到stdout
                 text=True,
-                encoding='utf-8',
-                errors='ignore',  # 忽略编码错误
-                bufsize=0,  # 无缓冲
-                cwd=str(engine_dir),  # 设置工作目录
-                startupinfo=startupinfo,
-                creationflags=creationflags
+                bufsize=1,  # 行缓冲
+                cwd=str(engine_dir),
+                universal_newlines=True,
+                # 保持交互式环境，不隐藏窗口
             )
             
-            # 等待进程启动
-            time.sleep(0.1)
+            output_queue = queue.Queue()
             
-            # 简化的通信方式：一次性发送所有命令
-            try:
-                # 设置NNUE文件的完整路径
-                nnue_path = engine_dir / "pikafish.nnue"
-                input_commands = f"uci\nisready\nsetoption name EvalFile value {nnue_path.absolute()}\nposition fen {fen}\ngo depth 8\nquit\n"
+            def read_output():
+                """持续读取引擎输出"""
+                while process.poll() is None:
+                    try:
+                        line = process.stdout.readline()
+                        if line:
+                            output_queue.put(line.rstrip('\n\r'))
+                    except:
+                        break
+            
+            # 启动输出读取线程
+            output_thread = threading.Thread(target=read_output, daemon=True)
+            output_thread.start()
+            
+            def send_command_and_collect(command, wait_time=5):
+                """发送命令并收集响应"""
+                # 发送命令
+                process.stdin.write(command + '\n')
+                process.stdin.flush()
                 
-                # 使用communicate进行一次性通信，设置超时
-                stdout, stderr = process.communicate(input=input_commands, timeout=15)
+                # 收集响应
+                responses = []
+                start_time = time.time()
                 
-                # 解析输出找到最佳走法
-                lines = stdout.split('\n')
-                for line in lines:
-                    line = line.strip()
-                    if line.startswith('bestmove'):
-                        parts = line.split()
-                        if len(parts) >= 2:
-                            best_move = parts[1]
-                            print(f"引擎分析完成，最佳走法: {best_move}")
-                            return best_move
+                while time.time() - start_time < wait_time:
+                    try:
+                        line = output_queue.get(timeout=0.1)
+                        responses.append(line)
+                        
+                        # 如果收到bestmove，分析完成
+                        if line.startswith('bestmove'):
+                            break
+                            
+                    except queue.Empty:
+                        continue
                 
-                print("引擎响应中未找到最佳走法")
+                return responses
+            
+            # 等待引擎启动
+            time.sleep(0.2)
+            
+            # 清空启动消息
+            while True:
+                try:
+                    line = output_queue.get(timeout=0.1)
+                    if 'Pikafish' in line:
+                        break
+                except queue.Empty:
+                    break
+            
+            # 发送position命令
+            pos_responses = send_command_and_collect(f"position {fen}", 2)
+            
+            # 发送go depth命令
+            go_responses = send_command_and_collect(f"go depth {depth}", 15)
+            
+            # 汇总响应并解析
+            all_responses = pos_responses + go_responses
+            
+            info_depth_lines = [line for line in all_responses if line.startswith('info depth')]
+            bestmove_lines = [line for line in all_responses if line.startswith('bestmove')]
+            
+            if bestmove_lines:
+                bestmove_line = bestmove_lines[-1]
+                parts = bestmove_line.split()
+                best_move = parts[1] if len(parts) >= 2 else None
+                
+                print(f"✅ 交互式分析完成，最佳走法: {best_move}")
+                print(f"📊 分析深度: {len(info_depth_lines)} 层")
+                
+                # 显示分析过程（可选）
+                if info_depth_lines and len(info_depth_lines) > 2:
+                    print(f"📈 评分变化:")
+                    for line in info_depth_lines:
+                        if 'score cp' in line:
+                            try:
+                                cp_score = line.split('score cp')[1].split()[0]
+                                depth_num = line.split('depth')[1].split()[0]
+                                print(f"  深度{depth_num}: {cp_score}厘兵")
+                            except:
+                                pass
+                
+                return best_move
+            else:
+                print("❌ 未找到最佳走法")
                 return "未找到最佳走法"
                 
-            except subprocess.TimeoutExpired:
-                print("引擎分析超时")
+        except subprocess.TimeoutExpired:
+            print("引擎分析超时")
+            if process:
                 process.kill()
-                return "分析超时"
-            except Exception as e:
-                print(f"引擎通信异常: {e}")
-                return f"引擎通信失败: {str(e)}"
-            
+            return "分析超时"
         except Exception as e:
             print(f"引擎分析异常: {type(e).__name__}: {str(e)}")
             import traceback
             traceback.print_exc()
             return f"引擎错误: {str(e)}"
+        finally:
+            # 清理进程
+            try:
+                if process and process.poll() is None:
+                    process.stdin.write("quit\n")
+                    process.stdin.flush()
+                    process.wait(timeout=3)
+            except:
+                if process:
+                    process.terminate()
     
-    def analyze_both_sides(self, fen):
+    def analyze_both_sides(self, fen, depth=8):
         """
         同时分析红方和黑方的最佳走法
-        返回: {'red': 红方最佳走法, 'black': 黑方最佳走法}
+        参数:
+            fen: 棋局的FEN格式  
+            depth: 搜索深度
+        返回: {'red': 红方走法, 'black': 黑方走法}
         """
+        print(f"🔄 开始双方分析（深度: {depth}）...")
+        
         result = {}
         
-        print("正在分析红方最佳走法...")
-        red_move = self.analyze_position(fen, 'w')  # 红方走棋
+        # 分析红方走法
+        print("🔴 分析红方...")
+        red_move = self.analyze_position(fen, 'w', depth)
         result['red'] = red_move
+        print(f"🔴 红方走法: {red_move}")
         
-        print("正在分析黑方最佳走法...")
-        black_move = self.analyze_position(fen, 'b')  # 黑方走棋
+        # 分析黑方走法
+        print("⚫ 分析黑方...")
+        black_move = self.analyze_position(fen, 'b', depth)
         result['black'] = black_move
+        print(f"⚫ 黑方走法: {black_move}")
         
         return result
     

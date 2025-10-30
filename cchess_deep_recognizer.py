@@ -352,7 +352,7 @@ class CChessDeepRecognizer:
                 row_fen = self.compress_fen_row(row_chars)
                 fen_rows.append(row_fen)
             
-            fen = '/'.join(fen_rows) + ' w - - 0 1'
+            fen = '/'.join(fen_rows) + ' w'  # 使用简洁FEN格式
             
             # 统计识别情况
             recognized = sum(1 for c in fen_chars if c not in ['.', 'x'])
